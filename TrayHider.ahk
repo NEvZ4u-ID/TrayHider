@@ -154,7 +154,16 @@ ApplyHotkeys(currentKeys, true)
 RebuildTrayMenu()
 OnExit(HandleExit)
 
-TraySetIcon("shell32.dll", 172)
+; Tray icon priority:
+;   1. Compiled .exe  → use the icon embedded in the exe itself (set at build time)
+;   2. Running as .ahk → use icon.ico if it sits next to the script
+;   3. Fallback        → a stock shell32 icon
+if A_IsCompiled
+    TraySetIcon(A_ScriptFullPath)
+else if FileExist(A_ScriptDir "\icon.ico")
+    TraySetIcon(A_ScriptDir "\icon.ico")
+else
+    TraySetIcon("shell32.dll", 172)
 TrayTip(L("appActive"), L("appActiveBody"), 1)
 
 ;=============================================================================
