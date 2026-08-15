@@ -23,35 +23,53 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install AutoHotkey v2 + compiler
-        uses: holy-tao/install-autohotkey@v1
-        with:
-          version: "latest"
-          compiler: "latest"
+      - name: Download AutoHotkey v2 + Ahk2Exe (official GitHub releases)
+        run: |
+          # Ask the GitHub API for the latest release of each official repo and
+          # grab its .zip asset — no hardcoded URLs or versions to go stale.
+          $ahkRel  = Invoke-RestMethod "https://api.github.com/repos/AutoHotkey/AutoHotkey/releases/latest"
+          $ahkZip  = $ahkRel.assets  | Where-Object { $_.name -like "*.zip" } | Select-Object -First 1
+          $cplRel  = Invoke-RestMethod "https://api.github.com/repos/AutoHotkey/Ahk2Exe/releases/latest"
+          $cplZip  = $cplRel.assets  | Where-Object { $_.name -like "*.zip" } | Select-Object -First 1
+
+          Write-Host "AutoHotkey asset : $($ahkZip.name)"
+          Write-Host "Ahk2Exe asset    : $($cplZip.name)"
+
+          Invoke-WebRequest $ahkZip.browser_download_url -OutFile "ahk.zip"
+          Invoke-WebRequest $cplZip.browser_download_url -OutFile "ahk2exe.zip"
+          Expand-Archive "ahk.zip"     -DestinationPath "ahk"
+          Expand-Archive "ahk2exe.zip" -DestinationPath "ahk2exe"
+        shell: pwsh
 
       - name: Compile TrayHider.ahk to TrayHider.exe
         run: |
-          # Locate the compiler and base interpreter wherever the action put them
-          $ahk2exe = Get-ChildItem -Path . -Recurse -Filter "Ahk2Exe.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-          $base    = Get-ChildItem -Path . -Recurse -Filter "AutoHotkey64.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $ahk2exe = Get-ChildItem -Path "ahk2exe" -Recurse -Filter "Ahk2Exe.exe" | Select-Object -First 1
+          $base    = Get-ChildItem -Path "ahk"     -Recurse -Filter "AutoHotkey64.exe" | Select-Object -First 1
 
           if (-not $ahk2exe) {
-            Write-Host "--- Directory listing for debugging ---"
-            Get-ChildItem -Path . -Recurse -Depth 3 | Select-Object FullName
-            Write-Error "Ahk2Exe.exe not found anywhere in the workspace."
+            Get-ChildItem -Path "ahk2exe" -Recurse | Select-Object FullName | Out-String | Write-Host
+            Write-Error "Ahk2Exe.exe not found in the downloaded compiler package."
             exit 1
           }
           if (-not $base) {
-            Write-Error "AutoHotkey64.exe (base interpreter) not found."
+            Get-ChildItem -Path "ahk" -Recurse | Select-Object FullName | Out-String | Write-Host
+            Write-Error "AutoHotkey64.exe not found in the downloaded AutoHotkey package."
             exit 1
           }
 
           Write-Host "Compiler : $($ahk2exe.FullName)"
           Write-Host "Base     : $($base.FullName)"
 
-          & $ahk2exe.FullName /silent verbose /in "TrayHider.ahk" /out "TrayHider.exe" /base $base.FullName
+          # /silent is required on a headless runner — otherwise Ahk2Exe may
+          # try to open a GUI dialog nobody can click and the job hangs.
+          Start-Process -FilePath $ahk2exe.FullName -Wait -NoNewWindow -ArgumentList @(
+            "/silent", "verbose",
+            "/in",   "`"$PWD\TrayHider.ahk`"",
+            "/out",  "`"$PWD\TrayHider.exe`"",
+            "/base", "`"$($base.FullName)`""
+          )
 
-          # Ahk2Exe can return before the file is flushed; wait briefly
+          # Ahk2Exe may return before the file is flushed; wait briefly
           $tries = 0
           while (!(Test-Path "TrayHider.exe") -and $tries -lt 10) {
             Start-Sleep -Seconds 1
