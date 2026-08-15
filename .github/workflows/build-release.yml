@@ -60,14 +60,23 @@ jobs:
           Write-Host "Compiler : $($ahk2exe.FullName)"
           Write-Host "Base     : $($base.FullName)"
 
+          # Embed the custom icon if icon.ico exists in the repo root
+          $iconArgs = @()
+          if (Test-Path "icon.ico") {
+            Write-Host "Icon     : $PWD\icon.ico"
+            $iconArgs = @("/icon", "`"$PWD\icon.ico`"")
+          } else {
+            Write-Host "Icon     : (none found — building with default AHK icon)"
+          }
+
           # /silent is required on a headless runner — otherwise Ahk2Exe may
           # try to open a GUI dialog nobody can click and the job hangs.
-          Start-Process -FilePath $ahk2exe.FullName -Wait -NoNewWindow -ArgumentList @(
+          Start-Process -FilePath $ahk2exe.FullName -Wait -NoNewWindow -ArgumentList (@(
             "/silent", "verbose",
             "/in",   "`"$PWD\TrayHider.ahk`"",
             "/out",  "`"$PWD\TrayHider.exe`"",
             "/base", "`"$($base.FullName)`""
-          )
+          ) + $iconArgs)
 
           # Ahk2Exe may return before the file is flushed; wait briefly
           $tries = 0
