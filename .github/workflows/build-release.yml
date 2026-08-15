@@ -23,15 +23,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download AutoHotkey v2 (portable)
-        run: |
-          Invoke-WebRequest -Uri "https://www.autohotkey.com/download/ahk-v2.zip" -OutFile "ahk.zip"
-          Expand-Archive -Path "ahk.zip" -DestinationPath "ahk"
-        shell: pwsh
+      - name: Install AutoHotkey v2 + compiler
+        uses: holy-tao/install-autohotkey@v1
+        with:
+          version: "latest"
+          compiler: "latest"
 
       - name: Compile TrayHider.ahk to TrayHider.exe
         run: |
-          & ".\ahk\Compiler\Ahk2Exe.exe" /in "TrayHider.ahk" /out "TrayHider.exe" /base ".\ahk\AutoHotkey64.exe"
+          & ".\autohotkey\Compiler\Ahk2Exe.exe" /in "TrayHider.ahk" /out "TrayHider.exe" /base ".\autohotkey\AutoHotkey64.exe"
+        shell: pwsh
+
+      - name: Verify the .exe was actually produced
+        run: |
+          if (!(Test-Path "TrayHider.exe")) {
+            Write-Error "Compilation failed: TrayHider.exe was not created."
+            exit 1
+          }
         shell: pwsh
 
       - name: Generate SHA256 checksum
