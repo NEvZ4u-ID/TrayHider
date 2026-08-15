@@ -31,7 +31,32 @@ jobs:
 
       - name: Compile TrayHider.ahk to TrayHider.exe
         run: |
-          & ".\autohotkey\Compiler\Ahk2Exe.exe" /in "TrayHider.ahk" /out "TrayHider.exe" /base ".\autohotkey\AutoHotkey64.exe"
+          # Locate the compiler and base interpreter wherever the action put them
+          $ahk2exe = Get-ChildItem -Path . -Recurse -Filter "Ahk2Exe.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $base    = Get-ChildItem -Path . -Recurse -Filter "AutoHotkey64.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+
+          if (-not $ahk2exe) {
+            Write-Host "--- Directory listing for debugging ---"
+            Get-ChildItem -Path . -Recurse -Depth 3 | Select-Object FullName
+            Write-Error "Ahk2Exe.exe not found anywhere in the workspace."
+            exit 1
+          }
+          if (-not $base) {
+            Write-Error "AutoHotkey64.exe (base interpreter) not found."
+            exit 1
+          }
+
+          Write-Host "Compiler : $($ahk2exe.FullName)"
+          Write-Host "Base     : $($base.FullName)"
+
+          & $ahk2exe.FullName /silent verbose /in "TrayHider.ahk" /out "TrayHider.exe" /base $base.FullName
+
+          # Ahk2Exe can return before the file is flushed; wait briefly
+          $tries = 0
+          while (!(Test-Path "TrayHider.exe") -and $tries -lt 10) {
+            Start-Sleep -Seconds 1
+            $tries++
+          }
         shell: pwsh
 
       - name: Verify the .exe was actually produced
