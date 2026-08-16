@@ -94,11 +94,39 @@ jobs:
           }
         shell: pwsh
 
-      - name: Generate SHA256 checksum
+      - name: Build installer with Inno Setup
         run: |
-          $hash = Get-FileHash -Path "TrayHider.exe" -Algorithm SHA256
-          "$($hash.Hash)  TrayHider.exe" | Out-File -FilePath "TrayHider.exe.sha256.txt" -Encoding ascii
-          Get-Content "TrayHider.exe.sha256.txt"
+          # windows-latest runners ship with Inno Setup 6 preinstalled at
+          # this path. Fall back to installing it via Chocolatey if it's
+          # ever missing, so this step doesn't silently do nothing.
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) {
+            Write-Host "ISCC.exe not found at the expected path — installing Inno Setup via choco."
+            choco install innosetup -y --no-progress
+            $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          }
+          if (!(Test-Path $iscc)) {
+            Write-Error "Inno Setup compiler still not found after install attempt."
+            exit 1
+          }
+
+          & $iscc "TrayHider.iss"
+
+          $built = Get-ChildItem -Path "installer_output" -Filter "*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $built) {
+            Write-Error "Installer build did not produce an .exe in installer_output\."
+            exit 1
+          }
+          Copy-Item $built.FullName -Destination "TrayHider-Setup.exe"
+        shell: pwsh
+
+      - name: Generate SHA256 checksums
+        run: |
+          foreach ($f in @("TrayHider.exe", "TrayHider-Setup.exe")) {
+            $hash = Get-FileHash -Path $f -Algorithm SHA256
+            "$($hash.Hash)  $f" | Out-File -FilePath "$f.sha256.txt" -Encoding ascii -Append:$false
+            Get-Content "$f.sha256.txt"
+          }
         shell: pwsh
 
       - name: Create GitHub Release
@@ -107,20 +135,28 @@ jobs:
           files: |
             TrayHider.exe
             TrayHider.exe.sha256.txt
+            TrayHider-Setup.exe
+            TrayHider-Setup.exe.sha256.txt
             TrayHider.ahk
           body: |
             Automated build compiled directly from the source in this repository
             by GitHub Actions — see the Actions tab for the full build log.
 
-            **Before running:** if your antivirus flags `TrayHider.exe`, this is
-            a known false positive common to compiled AutoHotkey scripts — see
-            the README for an explanation and how to verify the binary or
-            build it yourself.
+            **Two ways to install:**
+            - `TrayHider-Setup.exe` — installer, no admin/UAC prompt (installs
+              to your user profile, not Program Files), with an option to
+              enable auto-start during setup.
+            - `TrayHider.exe` — portable, just run it directly, no install.
 
-            Verify the download with:
+            **Before running:** if your antivirus flags either file, this is
+            a known false positive common to compiled AutoHotkey scripts — see
+            the README for an explanation and how to verify the binaries or
+            build them yourself.
+
+            Verify a download with:
             ```powershell
             certutil -hashfile TrayHider.exe SHA256
             ```
-            and compare against `TrayHider.exe.sha256.txt`.
+            and compare against the matching `.sha256.txt` file.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
