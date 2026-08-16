@@ -12,6 +12,15 @@ on:
   push:
     tags:
       - "v*"
+  # Lets you trigger a build manually from the Actions tab (with a fake/blank
+  # tag input) — useful to confirm GitHub even recognizes this workflow file
+  # without needing to create a real git tag every time you want to test it.
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag to attach this build to (must already exist, e.g. v1.1.0). Leave blank to just test the build without creating/updating a release."
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -129,9 +138,30 @@ jobs:
           }
         shell: pwsh
 
+      # Always uploaded regardless of trigger type, so a manual test run
+      # (workflow_dispatch with no tag) still lets you download the built
+      # files straight from this run's Summary page — useful for confirming
+      # the build itself works without needing to publish a Release yet.
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: TrayHider-build
+          path: |
+            TrayHider.exe
+            TrayHider.exe.sha256.txt
+            TrayHider-Setup.exe
+            TrayHider-Setup.exe.sha256.txt
+          retention-days: 30
+
       - name: Create GitHub Release
+        # Only attach to a Release when this run came from an actual tag
+        # push, or from a manual run where a release_tag was explicitly
+        # provided. A manual "just test the build" run (blank input) skips
+        # this step and relies on the artifact upload above instead.
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event_name == 'push' && github.ref_name || github.event.inputs.release_tag }}
           files: |
             TrayHider.exe
             TrayHider.exe.sha256.txt
