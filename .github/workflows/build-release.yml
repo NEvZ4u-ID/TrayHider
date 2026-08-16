@@ -11,7 +11,12 @@ name: Build and Release
 on:
   push:
     tags:
+      # Matches both "v1.0.0" and "V1.0.0" — GitHub's own release UI
+      # sometimes capitalizes the tag depending on what you type into the
+      # "Choose a tag" box, and this pattern is case-sensitive by default,
+      # so both cases are listed explicitly to avoid silently missing builds.
       - "v*"
+      - "V*"
   # Lets you trigger a build manually from the Actions tab (with a fake/blank
   # tag input) — useful to confirm GitHub even recognizes this workflow file
   # without needing to create a real git tag every time you want to test it.
